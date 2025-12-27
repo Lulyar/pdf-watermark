@@ -1,0 +1,311 @@
+from flask import Flask, render_template, request, send_file, redirect, url_for, flash, jsonify
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from PyPDF2 import PdfReader, PdfWriter
+from PIL import Image
+import os
+import io
+import traceback
+import zipfile
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__, static_folder="style")
+app.secret_key = "change-this-secret-key"
+
+WATERMARK_IMAGE = "watermark.png"
+PAGE_WIDTH, PAGE_HEIGHT = A4  # ukuran halaman default (A4) dalam point
+
+
+def create_faded_watermark(src_path: str, dest_path: str, opacity: float = 0.1) -> None:
+    """
+    Membuat versi transparan dari gambar watermark tanpa mengubah aslinya.
+    opacity: 0.0 - 1.0 (0.6 = 60%)
+    """
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    img = Image.open(src_path).convert("RGBA")
+    r, g, b, a = img.split()
+    a = a.point(lambda v: int(v * opacity))
+    faded = Image.merge("RGBA", (r, g, b, a))
+    faded.save(dest_path, format="PNG")
+
+
+def create_watermark_pdf(
+    watermark_image_path: str,
+    opacity: float = 0.6,
+    position_h: str = "center",  # left, center, right
+    position_v: str = "center",    # top, center, bottom
+    size_percent: int = 100        # 1-200 (persentase dari ukuran default)
+) -> bytes:
+    """
+    Buat watermark.pdf dari gambar watermark dengan pengaturan custom.
+    """
+    if not os.path.exists(watermark_image_path):
+        raise FileNotFoundError(f"Gambar watermark tidak ditemukan: {watermark_image_path}")
+
+    faded_path = os.path.join("temp", "watermark_faded.png")
+    create_faded_watermark(watermark_image_path, faded_path, opacity=opacity)
+
+    # Hitung ukuran watermark
+    img = Image.open(faded_path)
+    orig_w, orig_h = img.size
+    
+    # Ukuran base (default 220pt width untuk A4)
+    base_width = 220
+    scale_factor = size_percent / 100.0
+    max_width = base_width * scale_factor
+    
+    scale = min(max_width / orig_w, max_width / orig_h)
+    target_w = orig_w * scale
+    target_h = orig_h * scale
+
+    # Hitung posisi horizontal
+    if position_h == "left":
+        x = 20
+    elif position_h == "right":
+        x = PAGE_WIDTH - target_w - 20
+    else:  # center
+        x = (PAGE_WIDTH - target_w) / 2
+
+    # Hitung posisi vertikal
+    if position_v == "top":
+        y = PAGE_HEIGHT - target_h - 20
+    elif position_v == "bottom":
+        y = 20
+    else:  # center
+        y = (PAGE_HEIGHT - target_h) / 2
+
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    c.drawImage(faded_path, x, y, width=target_w, height=target_h, mask="auto")
+    c.save()
+    buffer.seek(0)
+    return buffer.read()
+
+
+def apply_watermark_to_file(
+    pdf_stream: io.BytesIO,
+    watermark_image_path: str = None,
+    opacity: float = 0.6,
+    position_h: str = "center",
+    position_v: str = "center",
+    size_percent: int = 100
+) -> io.BytesIO:
+    """
+    Terima stream PDF, terapkan watermark ke semua halaman, kembalikan stream PDF baru.
+    """
+    # Gunakan watermark custom jika ada, kalau tidak pakai default
+    wm_path = watermark_image_path if watermark_image_path and os.path.exists(watermark_image_path) else WATERMARK_IMAGE
+    
+    wm_bytes = create_watermark_pdf(wm_path, opacity, position_h, position_v, size_percent)
+    wm_reader = PdfReader(io.BytesIO(wm_bytes))
+    watermark_page = wm_reader.pages[0]
+
+    reader = PdfReader(pdf_stream)
+    writer = PdfWriter()
+
+    for i in range(len(reader.pages)):
+        page = reader.pages[i]
+        page.merge_page(watermark_page)
+        writer.add_page(page)
+
+    output_stream = io.BytesIO()
+    writer.write(output_stream)
+    output_stream.seek(0)
+    return output_stream
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
+
+
+@app.route("/preview", methods=["POST"])
+def preview():
+    """Endpoint untuk generate preview PDF (halaman pertama saja)"""
+    try:
+        pdf_file = request.files.get("pdf")
+        watermark_file = request.files.get("watermark")
+        opacity = float(request.form.get("opacity", 60)) / 100.0
+        position_h = request.form.get("position_h", "center")
+        position_v = request.form.get("position_v", "center")
+        size_percent = int(request.form.get("size_percent", 100))
+
+        if not pdf_file or pdf_file.filename == "":
+            return jsonify({"error": "PDF file required"}), 400
+
+        # Simpan watermark custom sementara jika ada
+        watermark_path = None
+        if watermark_file and watermark_file.filename:
+            watermark_path = os.path.join("temp", secure_filename(watermark_file.filename))
+            os.makedirs(os.path.dirname(watermark_path), exist_ok=True)
+            watermark_file.save(watermark_path)
+
+        pdf_bytes = pdf_file.read()
+        pdf_stream = io.BytesIO(pdf_bytes)
+        
+        # Ambil hanya halaman pertama untuk preview
+        reader = PdfReader(pdf_stream)
+        if len(reader.pages) == 0:
+            return jsonify({"error": "PDF has no pages"}), 400
+
+        # Buat PDF dengan hanya halaman pertama
+        preview_writer = PdfWriter()
+        preview_writer.add_page(reader.pages[0])
+        preview_stream = io.BytesIO()
+        preview_writer.write(preview_stream)
+        preview_stream.seek(0)
+
+        # Apply watermark
+        wm_path = watermark_path if watermark_path else WATERMARK_IMAGE
+        wm_bytes = create_watermark_pdf(wm_path, opacity, position_h, position_v, size_percent)
+        wm_reader = PdfReader(io.BytesIO(wm_bytes))
+        watermark_page = wm_reader.pages[0]
+
+        preview_reader = PdfReader(preview_stream)
+        preview_page = preview_reader.pages[0]
+        preview_page.merge_page(watermark_page)
+
+        output_writer = PdfWriter()
+        output_writer.add_page(preview_page)
+        output_stream = io.BytesIO()
+        output_writer.write(output_stream)
+        output_stream.seek(0)
+
+        # Hapus watermark custom sementara
+        if watermark_path and os.path.exists(watermark_path):
+            try:
+                os.remove(watermark_path)
+            except:
+                pass
+
+        return send_file(
+            output_stream,
+            mimetype="application/pdf",
+            as_attachment=False
+        )
+    except Exception as e:
+        print("Error saat preview:", e)
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    """Endpoint untuk single file upload"""
+    try:
+        pdf_file = request.files.get("pdf")
+        watermark_file = request.files.get("watermark")
+        opacity = float(request.form.get("opacity", 60)) / 100.0
+        position_h = request.form.get("position_h", "center")
+        position_v = request.form.get("position_v", "center")
+        size_percent = int(request.form.get("size_percent", 100))
+
+        if not pdf_file or pdf_file.filename == "":
+            flash("Silakan pilih file PDF terlebih dahulu.")
+            return redirect(url_for("index"))
+
+        if not pdf_file.filename.lower().endswith(".pdf"):
+            flash("Hanya file PDF yang diperbolehkan.")
+            return redirect(url_for("index"))
+
+        # Simpan watermark custom sementara jika ada
+        watermark_path = None
+        if watermark_file and watermark_file.filename:
+            watermark_path = os.path.join("temp", secure_filename(watermark_file.filename))
+            os.makedirs(os.path.dirname(watermark_path), exist_ok=True)
+            watermark_file.save(watermark_path)
+
+        pdf_bytes = pdf_file.read()
+        pdf_stream = io.BytesIO(pdf_bytes)
+        output_stream = apply_watermark_to_file(
+            pdf_stream, watermark_path, opacity, position_h, position_v, size_percent
+        )
+
+        # Hapus watermark custom sementara
+        if watermark_path and os.path.exists(watermark_path):
+            try:
+                os.remove(watermark_path)
+            except:
+                pass
+
+        output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
+        return send_file(
+            output_stream,
+            as_attachment=True,
+            download_name=output_filename,
+            mimetype="application/pdf",
+        )
+    except Exception as e:
+        print("Error saat memproses file:", e)
+        traceback.print_exc()
+        flash("Terjadi kesalahan saat memproses file.")
+        return redirect(url_for("index"))
+
+
+@app.route("/batch", methods=["POST"])
+def batch_upload():
+    """Endpoint untuk batch upload multiple PDF files"""
+    try:
+        pdf_files = request.files.getlist("pdfs")
+        watermark_file = request.files.get("watermark")
+        opacity = float(request.form.get("opacity", 60)) / 100.0
+        position_h = request.form.get("position_h", "center")
+        position_v = request.form.get("position_v", "center")
+        size_percent = int(request.form.get("size_percent", 100))
+
+        if not pdf_files or len(pdf_files) == 0:
+            flash("Silakan pilih minimal satu file PDF.")
+            return redirect(url_for("index"))
+
+        # Simpan watermark custom sementara jika ada
+        watermark_path = None
+        if watermark_file and watermark_file.filename:
+            watermark_path = os.path.join("temp", secure_filename(watermark_file.filename))
+            os.makedirs(os.path.dirname(watermark_path), exist_ok=True)
+            watermark_file.save(watermark_path)
+
+        # Proses semua file dan simpan ke zip
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for pdf_file in pdf_files:
+                if not pdf_file.filename or not pdf_file.filename.lower().endswith(".pdf"):
+                    continue
+
+                try:
+                    pdf_bytes = pdf_file.read()
+                    pdf_stream = io.BytesIO(pdf_bytes)
+                    output_stream = apply_watermark_to_file(
+                        pdf_stream, watermark_path, opacity, position_h, position_v, size_percent
+                    )
+                    
+                    output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
+                    zip_file.writestr(output_filename, output_stream.read())
+                except Exception as e:
+                    print(f"Error processing {pdf_file.filename}: {e}")
+                    continue
+
+        # Hapus watermark custom sementara
+        if watermark_path and os.path.exists(watermark_path):
+            try:
+                os.remove(watermark_path)
+            except:
+                pass
+
+        zip_buffer.seek(0)
+        return send_file(
+            zip_buffer,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name="watermarked_pdfs.zip"
+        )
+    except Exception as e:
+        print("Error saat batch processing:", e)
+        traceback.print_exc()
+        flash("Terjadi kesalahan saat memproses batch file.")
+        return redirect(url_for("index"))
+
+
+if __name__ == "__main__":
+    # Jalankan server: python app.py
+    # Lalu buka di browser: http://127.0.0.1:5000
+    app.run(debug=True)

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>PDF Watermark</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script defer src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
+</head>
+<body class="theme-light">
+    <div class="card">
+        <div class="card-header">
+            <h1>PDF Watermark</h1>
+            <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+                <span class="theme-toggle__icon theme-toggle__icon--light">☀</span>
+                <span class="theme-toggle__icon theme-toggle__icon--dark">🌙</span>
+            </button>
+        </div>
+        <p class="subtitle">Upload file PDF, atur watermark, dan download hasilnya.</p>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            {% for msg in messages %}
+              <div class="alert alert-error">{{ msg }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form id="watermark-form" method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+            <!-- Upload Mode -->
+            <div class="field">
+                <label for="upload-mode">Mode Upload</label>
+                <select id="upload-mode" name="upload_mode" class="form-select">
+                    <option value="single">Single File</option>
+                    <option value="batch">Batch (Multiple Files)</option>
+                </select>
+            </div>
+
+            <!-- PDF File(s) -->
+            <div class="field">
+                <label for="pdf">File PDF <span id="file-count"></span></label>
+                <input type="file" id="pdf" name="pdf" accept="application/pdf" class="file-input" />
+                <input type="file" id="pdfs" name="pdfs" accept="application/pdf" multiple style="display: none;" />
+            </div>
+
+            <!-- Custom Watermark -->
+            <div class="field">
+                <label for="watermark">Watermark Custom (Opsional)</label>
+                <input type="file" id="watermark" name="watermark" accept="image/png,image/jpeg,image/jpg" />
+                <small class="field-hint">Kosongkan untuk menggunakan watermark default</small>
+            </div>
+
+            <!-- Opacity Slider -->
+            <div class="field">
+                <label for="opacity">Transparansi: <span id="opacity-value">60</span>%</label>
+                <input type="range" id="opacity" name="opacity" min="1" max="100" value="60" class="slider" />
+            </div>
+
+            <!-- Size Slider -->
+            <div class="field">
+                <label for="size_percent">Ukuran: <span id="size-value">100</span>%</label>
+                <input type="range" id="size_percent" name="size_percent" min="10" max="200" value="100" class="slider" />
+            </div>
+
+            <!-- Position Horizontal -->
+            <div class="field">
+                <label for="position_h">Posisi Horizontal</label>
+                <select id="position_h" name="position_h" class="form-select">
+                    <option value="left">Kiri</option>
+                    <option value="center" selected>Tengah</option>
+                    <option value="right">Kanan</option>
+                </select>
+            </div>
+
+            <!-- Position Vertical -->
+            <div class="field">
+                <label for="position_v">Posisi Vertikal</label>
+                <select id="position_v" name="position_v" class="form-select">
+                    <option value="top">Atas</option>
+                    <option value="center" selected>Tengah</option>
+                    <option value="bottom">Bawah</option>
+                </select>
+            </div>
+
+            <!-- Preview Area -->
+            <div class="field" id="preview-area" style="display: none;">
+                <label>Preview</label>
+                <div class="preview-container">
+                    <iframe id="preview-frame" class="preview-frame"></iframe>
+                    <div class="preview-loading" id="preview-loading">Memuat preview...</div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group">
+                <button type="button" id="preview-btn" class="btn-secondary">Preview</button>
+                <button type="submit" class="btn-primary">Terapkan Watermark &amp; Download</button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>
