@@ -43,43 +43,59 @@
                 <input type="file" id="pdfs" name="pdfs" accept="application/pdf" multiple style="display: none;" />
             </div>
 
-            <!-- Custom Watermark -->
-            <div class="field">
-                <label for="watermark">Watermark Custom (Opsional)</label>
-                <input type="file" id="watermark" name="watermark" accept="image/png,image/jpeg,image/jpg" />
-                <small class="field-hint">Kosongkan untuk menggunakan watermark default</small>
+            <!-- Password and Size Row -->
+            <div class="field-row">
+                <!-- Password for Encryption -->
+                <div class="field field-password">
+                    <label for="password">Password untuk Enkripsi (Opsional)</label>
+                    <input type="password" id="password" name="password" class="form-input" />
+                    <small class="field-hint">Kosongkan jika tidak ingin mengenkripsi PDF</small>
+                </div>
+
+                <!-- Size Slider -->
+                <div class="field">
+                    <label for="size_percent">Ukuran: <span id="size-value">100</span>%</label>
+                    <input type="range" id="size_percent" name="size_percent" min="10" max="200" value="100" class="slider" />
+                </div>
             </div>
 
-            <!-- Opacity Slider -->
-            <div class="field">
-                <label for="opacity">Transparansi: <span id="opacity-value">60</span>%</label>
-                <input type="range" id="opacity" name="opacity" min="1" max="100" value="60" class="slider" />
+            <!-- Opacity and Watermark Row -->
+            <div class="field-row">
+                <!-- Opacity Slider -->
+                <div class="field">
+                    <label for="opacity">Transparansi: <span id="opacity-value">60</span>%</label>
+                    <input type="range" id="opacity" name="opacity" min="1" max="100" value="60" class="slider" />
+                </div>
+
+                <!-- Custom Watermark -->
+                <div class="field">
+                    <label for="watermark">Watermark Custom (Opsional)</label>
+                    <input type="file" id="watermark" name="watermark" accept="image/png,image/jpeg,image/jpg" />
+                    <small class="field-hint">Kosongkan untuk menggunakan watermark default</small>
+                </div>
             </div>
 
-            <!-- Size Slider -->
-            <div class="field">
-                <label for="size_percent">Ukuran: <span id="size-value">100</span>%</label>
-                <input type="range" id="size_percent" name="size_percent" min="10" max="200" value="100" class="slider" />
-            </div>
+            <!-- Position Selectors Row -->
+            <div class="field-row">
+                <!-- Position Horizontal -->
+                <div class="field">
+                    <label for="position_h">Posisi Horizontal</label>
+                    <select id="position_h" name="position_h" class="form-select">
+                        <option value="left">Kiri</option>
+                        <option value="center" selected>Tengah</option>
+                        <option value="right">Kanan</option>
+                    </select>
+                </div>
 
-            <!-- Position Horizontal -->
-            <div class="field">
-                <label for="position_h">Posisi Horizontal</label>
-                <select id="position_h" name="position_h" class="form-select">
-                    <option value="left">Kiri</option>
-                    <option value="center" selected>Tengah</option>
-                    <option value="right">Kanan</option>
-                </select>
-            </div>
-
-            <!-- Position Vertical -->
-            <div class="field">
-                <label for="position_v">Posisi Vertikal</label>
-                <select id="position_v" name="position_v" class="form-select">
-                    <option value="top">Atas</option>
-                    <option value="center" selected>Tengah</option>
-                    <option value="bottom">Bawah</option>
-                </select>
+                <!-- Position Vertical -->
+                <div class="field">
+                    <label for="position_v">Posisi Vertikal</label>
+                    <select id="position_v" name="position_v" class="form-select">
+                        <option value="top">Atas</option>
+                        <option value="center" selected>Tengah</option>
+                        <option value="bottom">Bawah</option>
+                    </select>
+                </div>
             </div>
 
             <!-- Preview Area -->
