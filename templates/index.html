@@ -27,6 +27,15 @@
         {% endwith %}
 
         <form id="watermark-form" method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+            <!-- Operation Mode -->
+            <div class="field">
+                <label for="operation-mode">Mode Operasi</label>
+                <select id="operation-mode" name="operation_mode" class="form-select">
+                    <option value="watermark" selected>Tambah Watermark &amp; Password</option>
+                    <option value="remove_password">Hapus Password</option>
+                </select>
+            </div>
+
             <!-- Upload Mode -->
             <div class="field">
                 <label for="upload-mode">Mode Upload</label>
@@ -42,6 +51,16 @@
                 <input type="file" id="pdf" name="pdf" accept="application/pdf" class="file-input" />
                 <input type="file" id="pdfs" name="pdfs" accept="application/pdf" multiple style="display: none;" />
             </div>
+
+            <!-- Original Password -->
+            <div class="field field-password" id="original-password-container">
+                <label for="original_password">Password PDF Saat Ini</label>
+                <input type="password" id="original_password" name="original_password" class="form-input" />
+                <small class="field-hint">Wajib diisi jika file PDF saat ini terkunci (memiliki password)</small>
+            </div>
+
+            <!-- Watermark Settings (Hidden in Remove Password Mode) -->
+            <div id="watermark-settings">
 
             <!-- Password and Size Row -->
             <div class="field-row">
@@ -97,6 +116,7 @@
                     </select>
                 </div>
             </div>
+            </div> <!-- End Watermark Settings -->
 
             <!-- Preview Area -->
             <div class="field" id="preview-area" style="display: none;">
@@ -110,7 +130,7 @@
             <!-- Buttons -->
             <div class="button-group">
                 <button type="button" id="preview-btn" class="btn-secondary">Preview</button>
-                <button type="submit" class="btn-primary">Terapkan Watermark &amp; Download</button>
+                <button type="submit" id="submit-btn" class="btn-primary">Terapkan Watermark &amp; Download</button>
             </div>
         </form>
     </div>

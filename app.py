@@ -92,7 +92,8 @@ def apply_watermark_to_file(
     opacity: float = 0.6,
     position_h: str = "center",
     position_v: str = "center",
-    size_percent: int = 100
+    size_percent: int = 100,
+    original_password: str = ""
 ) -> io.BytesIO:
     """
     Terima stream PDF, terapkan watermark ke semua halaman, kembalikan stream PDF baru.
@@ -105,6 +106,13 @@ def apply_watermark_to_file(
     watermark_page = wm_reader.pages[0]
 
     reader = PdfReader(pdf_stream)
+    if reader.is_encrypted:
+        if not original_password:
+            raise Exception("File PDF terkunci. Silakan masukkan password saat ini.")
+        success = reader.decrypt(original_password)
+        if not success:
+            raise Exception("Password saat ini salah. Tidak dapat membuka PDF.")
+
     writer = PdfWriter()
 
     for i in range(len(reader.pages)):
@@ -112,6 +120,31 @@ def apply_watermark_to_file(
         page.merge_page(watermark_page)
         writer.add_page(page)
 
+    output_stream = io.BytesIO()
+    writer.write(output_stream)
+    output_stream.seek(0)
+    return output_stream
+
+
+def remove_password_from_file(
+    pdf_stream: io.BytesIO,
+    original_password: str
+) -> io.BytesIO:
+    """
+    Menghapus password dari PDF yang terenkripsi.
+    """
+    reader = PdfReader(pdf_stream)
+    if reader.is_encrypted:
+        if not original_password:
+            raise Exception("File PDF terkunci. Silakan masukkan password saat ini.")
+        success = reader.decrypt(original_password)
+        if not success:
+            raise Exception("Password saat ini salah. Tidak dapat membuka PDF.")
+            
+    writer = PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+        
     output_stream = io.BytesIO()
     writer.write(output_stream)
     output_stream.seek(0)
@@ -228,6 +261,14 @@ def preview():
         
         # Ambil hanya halaman pertama untuk preview
         reader = PdfReader(pdf_stream)
+        original_password = request.form.get("original_password", "").strip()
+        if reader.is_encrypted:
+            if not original_password:
+                return jsonify({"error": "File PDF terkunci. Masukkan password saat ini."}), 400
+            success = reader.decrypt(original_password)
+            if not success:
+                return jsonify({"error": "Password saat ini salah."}), 400
+
         if len(reader.pages) == 0:
             return jsonify({"error": "PDF has no pages"}), 400
 
@@ -301,15 +342,23 @@ def upload():
         pdf_bytes = pdf_file.read()
         pdf_stream = io.BytesIO(pdf_bytes)
         
-        # Step 1: Apply watermark to PDF
-        output_stream = apply_watermark_to_file(
-            pdf_stream, watermark_path, opacity, position_h, position_v, size_percent
-        )
+        operation_mode = request.form.get("operation_mode", "watermark")
+        original_password = request.form.get("original_password", "").strip()
 
-        # Step 2: Encrypt PDF dengan AES-256 jika password diberikan
-        password = request.form.get("password", "").strip()
-        if password:
-            output_stream = encrypt_pdf_with_aes(output_stream, password)
+        if operation_mode == "remove_password":
+            output_stream = remove_password_from_file(pdf_stream, original_password)
+            output_filename = os.path.splitext(pdf_file.filename)[0] + "_unlocked.pdf"
+        else:
+            # Step 1: Apply watermark to PDF
+            output_stream = apply_watermark_to_file(
+                pdf_stream, watermark_path, opacity, position_h, position_v, size_percent, original_password
+            )
+
+            # Step 2: Encrypt PDF dengan AES-256 jika password diberikan
+            password = request.form.get("password", "").strip()
+            if password:
+                output_stream = encrypt_pdf_with_aes(output_stream, password)
+            output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
 
         # Hapus watermark custom sementara
         if watermark_path and os.path.exists(watermark_path):
@@ -317,8 +366,6 @@ def upload():
                 os.remove(watermark_path)
             except:
                 pass
-
-        output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
         return send_file(
             output_stream,
             as_attachment=True,
@@ -368,16 +415,24 @@ def batch_upload():
                     pdf_bytes = pdf_file.read()
                     pdf_stream = io.BytesIO(pdf_bytes)
                     
-                    # Step 2: Apply watermark to PDF
-                    output_stream = apply_watermark_to_file(
-                        pdf_stream, watermark_path, opacity, position_h, position_v, size_percent
-                    )
+                    operation_mode = request.form.get("operation_mode", "watermark")
+                    original_password = request.form.get("original_password", "").strip()
+
+                    if operation_mode == "remove_password":
+                        output_stream = remove_password_from_file(pdf_stream, original_password)
+                        output_filename = os.path.splitext(pdf_file.filename)[0] + "_unlocked.pdf"
+                    else:
+                        # Step 2: Apply watermark to PDF
+                        output_stream = apply_watermark_to_file(
+                            pdf_stream, watermark_path, opacity, position_h, position_v, size_percent, original_password
+                        )
+                        
+                        # Step 3: Encrypt PDF dengan AES-256 jika password diberikan
+                        if password:
+                            output_stream = encrypt_pdf_with_aes(output_stream, password)
+                        
+                        output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
                     
-                    # Step 3: Encrypt PDF dengan AES-256 jika password diberikan
-                    if password:
-                        output_stream = encrypt_pdf_with_aes(output_stream, password)
-                    
-                    output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
                     zip_file.writestr(output_filename, output_stream.read())
                 except Exception as e:
                     print(f"Error processing {pdf_file.filename}: {e}")

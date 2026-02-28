@@ -12,6 +12,27 @@
   const previewArea = document.getElementById("preview-area");
   const previewFrame = document.getElementById("preview-frame");
   const previewLoading = document.getElementById("preview-loading");
+  const operationMode = document.getElementById("operation-mode");
+  const watermarkSettings = document.getElementById("watermark-settings");
+  const submitBtn = document.getElementById("submit-btn");
+  const originalPassword = document.getElementById("original_password");
+
+  // Handle operation mode change
+  if (operationMode) {
+    operationMode.addEventListener("change", function () {
+      const isRemovePassword = this.value === "remove_password";
+      if (isRemovePassword) {
+        if (watermarkSettings) watermarkSettings.style.display = "none";
+        if (previewBtn) previewBtn.style.display = "none";
+        if (previewArea) previewArea.style.display = "none";
+        if (submitBtn) submitBtn.textContent = "Hapus Password & Download";
+      } else {
+        if (watermarkSettings) watermarkSettings.style.display = "block";
+        if (previewBtn) previewBtn.style.display = "inline-block";
+        if (submitBtn) submitBtn.textContent = "Terapkan Watermark & Download";
+      }
+    });
+  }
 
   // Update opacity value display
   if (opacitySlider && opacityValue) {
@@ -98,10 +119,19 @@
           formData.append("watermark", watermarkInput.files[0]);
         }
         
-        formData.append("opacity", opacitySlider.value);
-        formData.append("position_h", document.getElementById("position_h").value);
-        formData.append("position_v", document.getElementById("position_v").value);
-        formData.append("size_percent", sizeSlider.value);
+        formData.append("opacity", opacitySlider ? opacitySlider.value : "60");
+        const posH = document.getElementById("position_h");
+        const posV = document.getElementById("position_v");
+        if (posH) formData.append("position_h", posH.value);
+        if (posV) formData.append("position_v", posV.value);
+        formData.append("size_percent", sizeSlider ? sizeSlider.value : "100");
+        
+        if (operationMode) {
+          formData.append("operation_mode", operationMode.value);
+        }
+        if (originalPassword) {
+          formData.append("original_password", originalPassword.value);
+        }
 
         const response = await fetch("/preview", {
           method: "POST",
