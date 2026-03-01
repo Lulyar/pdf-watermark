@@ -1,23 +1,41 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8" />
-    <title>PDF Watermark</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Watermark & Lock</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230d9488'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'>P</text></svg>">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script defer src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
 </head>
 <body class="theme-light">
-    <div class="card">
-        <div class="card-header">
-            <h1>PDF Watermark</h1>
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/" class="navbar-brand">
+                <span class="brand-text">PDF<strong>Tools</strong></span>
+            </a>
+            <button type="button" id="hamburger-btn" class="hamburger-btn" aria-label="Menu">
+                <span class="iconify" data-icon="mdi:menu" data-inline="false"></span>
+            </button>
+            <div class="navbar-links" id="navbar-links">
+                <a href="#" class="nav-link active" data-mode="watermark">Watermark</a>
+                <a href="#" class="nav-link" data-mode="compress">Kompres</a>
+                <a href="#" class="nav-link" data-mode="lock">Kunci</a>
+                <a href="#" class="nav-link" data-mode="remove_password">Buka Kunci</a>
+            </div>
             <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
-                <span class="theme-toggle__icon theme-toggle__icon--light">☀</span>
-                <span class="theme-toggle__icon theme-toggle__icon--dark">🌙</span>
+                <span class="theme-toggle__icon theme-toggle__icon--light"><span class="iconify" data-icon="mdi:weather-sunny" data-inline="false"></span></span>
+                <span class="theme-toggle__icon theme-toggle__icon--dark"><span class="iconify" data-icon="mdi:weather-night" data-inline="false"></span></span>
             </button>
         </div>
-        <p class="subtitle">Upload file PDF, atur watermark, dan download hasilnya.</p>
+    </nav>
 
+    <!-- Main Content -->
+    <main class="main-content">
         {% with messages = get_flashed_messages() %}
           {% if messages %}
             {% for msg in messages %}
@@ -26,113 +44,126 @@
           {% endif %}
         {% endwith %}
 
+        <!-- Hero Section -->
+        <section class="hero" id="hero-section">
+            <h1 id="hero-title">Tambah Watermark PDF</h1>
+            <p class="hero-subtitle" id="hero-subtitle">Tambahkan watermark ke file PDF kamu dengan mudah.</p>
+        </section>
+
+        <!-- Upload Zone -->
         <form id="watermark-form" method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
-            <!-- Operation Mode -->
-            <div class="field">
-                <label for="operation-mode">Mode Operasi</label>
-                <select id="operation-mode" name="operation_mode" class="form-select">
-                    <option value="watermark" selected>Tambah Watermark &amp; Password</option>
-                    <option value="remove_password">Hapus Password</option>
-                </select>
-            </div>
+            <input type="hidden" id="operation-mode" name="operation_mode" value="watermark" />
 
-            <!-- Upload Mode -->
-            <div class="field">
-                <label for="upload-mode">Mode Upload</label>
-                <select id="upload-mode" name="upload_mode" class="form-select">
-                    <option value="single">Single File</option>
-                    <option value="batch">Batch (Multiple Files)</option>
-                </select>
-            </div>
-
-            <!-- PDF File(s) -->
-            <div class="field">
-                <label for="pdf">File PDF <span id="file-count"></span></label>
-                <input type="file" id="pdf" name="pdf" accept="application/pdf" class="file-input" />
-                <input type="file" id="pdfs" name="pdfs" accept="application/pdf" multiple style="display: none;" />
-            </div>
-
-            <!-- Original Password -->
-            <div class="field field-password" id="original-password-container">
-                <label for="original_password">Password PDF Saat Ini</label>
-                <input type="password" id="original_password" name="original_password" class="form-input" />
-                <small class="field-hint">Wajib diisi jika file PDF saat ini terkunci (memiliki password)</small>
-            </div>
-
-            <!-- Watermark Settings (Hidden in Remove Password Mode) -->
-            <div id="watermark-settings">
-
-            <!-- Password and Size Row -->
-            <div class="field-row">
-                <!-- Password for Encryption -->
-                <div class="field field-password">
-                    <label for="password">Password untuk Enkripsi (Opsional)</label>
-                    <input type="password" id="password" name="password" class="form-input" />
-                    <small class="field-hint">Kosongkan jika tidak ingin mengenkripsi PDF</small>
+            <div class="upload-zone" id="upload-zone">
+                <div class="upload-zone-content">
+                    <div class="upload-icon"><span class="iconify" data-icon="mdi:cloud-upload-outline" data-inline="false" style="font-size: 3rem;"></span></div>
+                    <button type="button" class="btn-upload" id="upload-btn">Pilih file PDF</button>
+                    <p class="upload-hint">atau jatuhkan PDF di sini</p>
+                    <input type="file" id="pdf" name="pdf" accept="application/pdf" class="file-hidden" />
+                    <input type="file" id="pdfs" name="pdfs" accept="application/pdf" multiple class="file-hidden" />
                 </div>
-
-                <!-- Size Slider -->
-                <div class="field">
-                    <label for="size_percent">Ukuran: <span id="size-value">100</span>%</label>
-                    <input type="range" id="size_percent" name="size_percent" min="10" max="200" value="100" class="slider" />
+                <!-- File selected indicator -->
+                <div class="file-selected" id="file-selected" style="display: none;">
+                    <span class="file-selected-icon"><span class="iconify" data-icon="mdi:check-circle" data-inline="false" style="color: var(--primary);"></span></span>
+                    <span class="file-selected-name" id="file-selected-name"></span>
+                    <button type="button" class="btn-remove-file" id="btn-remove-file"><span class="iconify" data-icon="mdi:close-circle" data-inline="false"></span></button>
                 </div>
             </div>
 
-            <!-- Opacity and Watermark Row -->
-            <div class="field-row">
-                <!-- Opacity Slider -->
-                <div class="field">
-                    <label for="opacity">Transparansi: <span id="opacity-value">60</span>%</label>
-                    <input type="range" id="opacity" name="opacity" min="1" max="100" value="60" class="slider" />
-                </div>
-
-                <!-- Custom Watermark -->
-                <div class="field">
-                    <label for="watermark">Watermark Custom (Opsional)</label>
-                    <input type="file" id="watermark" name="watermark" accept="image/png,image/jpeg,image/jpg" />
-                    <small class="field-hint">Kosongkan untuk menggunakan watermark default</small>
-                </div>
+            <!-- Upload Mode Toggle -->
+            <div class="upload-mode-toggle">
+                <label class="toggle-option">
+                    <input type="radio" name="upload_mode" value="single" checked />
+                    <span>Single File</span>
+                </label>
+                <label class="toggle-option">
+                    <input type="radio" name="upload_mode" value="batch" />
+                    <span>Batch <small>(Multiple)</small></span>
+                </label>
             </div>
 
-            <!-- Position Selectors Row -->
-            <div class="field-row">
-                <!-- Position Horizontal -->
-                <div class="field">
-                    <label for="position_h">Posisi Horizontal</label>
-                    <select id="position_h" name="position_h" class="form-select">
-                        <option value="left">Kiri</option>
-                        <option value="center" selected>Tengah</option>
-                        <option value="right">Kanan</option>
-                    </select>
+            <!-- Settings Panel (shown after file selected) -->
+            <div class="settings-panel" id="settings-panel" style="display: none;">
+
+                <!-- Original Password -->
+                <div class="setting-group" id="original-password-container" style="display: none;">
+                    <label for="original_password">Password PDF Saat Ini</label>
+                    <input type="password" id="original_password" name="original_password" class="form-input" placeholder="Kosongkan jika tidak ada" />
+                    <small class="field-hint">Wajib diisi jika file PDF saat ini terkunci</small>
                 </div>
 
-                <!-- Position Vertical -->
-                <div class="field">
-                    <label for="position_v">Posisi Vertikal</label>
-                    <select id="position_v" name="position_v" class="form-select">
-                        <option value="top">Atas</option>
-                        <option value="center" selected>Tengah</option>
-                        <option value="bottom">Bawah</option>
-                    </select>
-                </div>
-            </div>
-            </div> <!-- End Watermark Settings -->
+                <!-- Watermark Settings -->
+                <!-- Watermark Settings -->
+                <div id="watermark-settings">
+                    <div class="settings-grid">
 
-            <!-- Preview Area -->
-            <div class="field" id="preview-area" style="display: none;">
-                <label>Preview</label>
-                <div class="preview-container">
-                    <iframe id="preview-frame" class="preview-frame"></iframe>
-                    <div class="preview-loading" id="preview-loading">Memuat preview...</div>
-                </div>
-            </div>
+                        <div class="setting-group">
+                            <label for="watermark">Watermark Custom</label>
+                            <input type="file" id="watermark" name="watermark" accept="image/png,image/jpeg,image/jpg" class="form-input-file" />
+                            <small class="field-hint">Kosongkan untuk watermark default</small>
+                        </div>
 
-            <!-- Buttons -->
-            <div class="button-group">
-                <button type="button" id="preview-btn" class="btn-secondary">Preview</button>
-                <button type="submit" id="submit-btn" class="btn-primary">Terapkan Watermark &amp; Download</button>
+                        <div class="setting-group">
+                            <label for="size_percent">Ukuran: <span id="size-value">100</span>%</label>
+                            <input type="range" id="size_percent" name="size_percent" min="10" max="200" value="100" class="slider" />
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="opacity">Transparansi: <span id="opacity-value">60</span>%</label>
+                            <input type="range" id="opacity" name="opacity" min="1" max="100" value="60" class="slider" />
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="position_h">Posisi Horizontal</label>
+                            <select id="position_h" name="position_h" class="form-select">
+                                <option value="left">Kiri</option>
+                                <option value="center" selected>Tengah</option>
+                                <option value="right">Kanan</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="position_v">Posisi Vertikal</label>
+                            <select id="position_v" name="position_v" class="form-select">
+                                <option value="top">Atas</option>
+                                <option value="center" selected>Tengah</option>
+                                <option value="bottom">Bawah</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lock Settings (Kunci PDF) -->
+                <div id="lock-settings" style="display: none;">
+                    <div class="setting-group">
+                        <label for="password">Password untuk Mengunci PDF</label>
+                        <input type="password" id="password" name="password" class="form-input" placeholder="Masukkan password" />
+                        <small class="field-hint">Password ini akan digunakan untuk mengenkripsi PDF (AES-256)</small>
+                    </div>
+                </div>
+
+                <!-- Preview Area -->
+                <div class="setting-group" id="preview-area" style="display: none;">
+                    <label>Preview</label>
+                    <div class="preview-container">
+                        <iframe id="preview-frame" class="preview-frame"></iframe>
+                        <div class="preview-loading" id="preview-loading">Memuat preview...</div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button type="button" id="preview-btn" class="btn-secondary">Preview</button>
+                    <button type="submit" id="submit-btn" class="btn-primary">Terapkan Watermark & Download</button>
+                </div>
             </div>
         </form>
-    </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2026 Luly & Irfan — PDFTools</p>
+    </footer>
+
 </body>
 </html>

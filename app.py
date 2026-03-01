@@ -230,6 +230,149 @@ def encrypt_pdf_with_aes(
     return output_stream
 
 
+def compress_pdf(pdf_stream: io.BytesIO, original_password: str = "") -> io.BytesIO:
+    """
+    Kompres PDF dengan mengompresi gambar dan stream.
+    Menggunakan pikepdf untuk kompresi yang lebih efektif.
+    """
+    import pikepdf
+
+    pdf_stream.seek(0)
+    open_kwargs = {}
+    if original_password:
+        open_kwargs["password"] = original_password
+
+    pdf = pikepdf.open(pdf_stream, **open_kwargs)
+    compressed_count = 0
+
+    # Iterasi SEMUA objek di PDF (bukan hanya per halaman)
+    for obj in pdf.objects:
+        try:
+            if not isinstance(obj, pikepdf.Stream):
+                continue
+            if obj.get("/Subtype") != pikepdf.Name.Image:
+                continue
+
+            # Ambil info gambar
+            w = int(obj.get("/Width", 0))
+            h = int(obj.get("/Height", 0))
+            if w == 0 or h == 0:
+                continue
+
+            # Cek filter yang digunakan
+            img_filter = obj.get("/Filter", None)
+            # Filter bisa berupa single Name atau Array
+            if isinstance(img_filter, pikepdf.Array):
+                filter_name = str(img_filter[0]) if len(img_filter) > 0 else ""
+            else:
+                filter_name = str(img_filter) if img_filter else ""
+
+            pil_image = None
+
+            # Metode 1: Gambar JPEG (DCTDecode) - baca raw bytes langsung
+            if "DCTDecode" in filter_name:
+                try:
+                    raw = obj.read_raw_bytes()
+                    pil_image = Image.open(io.BytesIO(raw))
+                except Exception as e:
+                    print(f"  Skip JPEG image {w}x{h}: {e}")
+                    continue
+
+            # Metode 2: Gambar JPEG2000 (JPXDecode)
+            elif "JPXDecode" in filter_name:
+                try:
+                    raw = obj.read_raw_bytes()
+                    pil_image = Image.open(io.BytesIO(raw))
+                except Exception as e:
+                    print(f"  Skip JPEG2000 image {w}x{h}: {e}")
+                    continue
+
+            # Metode 3: Gambar raw/flate (FlateDecode atau tanpa filter)
+            else:
+                try:
+                    raw_data = obj.read_bytes()
+                    cs = obj.get("/ColorSpace", None)
+
+                    # Resolve color space
+                    if cs == pikepdf.Name.DeviceRGB or str(cs) == "/DeviceRGB":
+                        mode, bpp = "RGB", 3
+                    elif cs == pikepdf.Name.DeviceGray or str(cs) == "/DeviceGray":
+                        mode, bpp = "L", 1
+                    elif cs == pikepdf.Name.DeviceCMYK or str(cs) == "/DeviceCMYK":
+                        mode, bpp = "CMYK", 4
+                    else:
+                        # Coba tebak dari ukuran data
+                        if len(raw_data) >= w * h * 3:
+                            mode, bpp = "RGB", 3
+                        elif len(raw_data) >= w * h:
+                            mode, bpp = "L", 1
+                        else:
+                            continue
+
+                    bits = int(obj.get("/BitsPerComponent", 8))
+                    if bits != 8:
+                        continue
+
+                    expected = w * h * bpp
+                    if len(raw_data) < expected:
+                        continue
+
+                    pil_image = Image.frombytes(mode, (w, h), raw_data[:expected])
+                except Exception as e:
+                    print(f"  Skip raw image {w}x{h}: {e}")
+                    continue
+
+            if pil_image is None:
+                continue
+
+            # Convert ke RGB jika perlu (JPEG tidak support RGBA/CMYK)
+            if pil_image.mode == "RGBA":
+                pil_image = pil_image.convert("RGB")
+            elif pil_image.mode == "CMYK":
+                pil_image = pil_image.convert("RGB")
+            elif pil_image.mode not in ("RGB", "L"):
+                pil_image = pil_image.convert("RGB")
+
+            # Re-encode sebagai JPEG quality rendah
+            img_buffer = io.BytesIO()
+            pil_image.save(img_buffer, format="JPEG", quality=40, optimize=True)
+            img_buffer.seek(0)
+            new_data = img_buffer.read()
+
+            # Ganti gambar di PDF
+            obj.write(new_data, filter=pikepdf.Name.DCTDecode)
+            if pil_image.mode == "L":
+                obj["/ColorSpace"] = pikepdf.Name.DeviceGray
+            else:
+                obj["/ColorSpace"] = pikepdf.Name.DeviceRGB
+            obj["/BitsPerComponent"] = 8
+            if "/SMask" in obj:
+                del obj["/SMask"]
+            if "/DecodeParms" in obj:
+                del obj["/DecodeParms"]
+            if "/Decode" in obj:
+                del obj["/Decode"]
+
+            compressed_count += 1
+            print(f"  Compressed image {w}x{h} ({filter_name})")
+        except Exception as e:
+            print(f"  Error processing object: {e}")
+            continue
+
+    print(f"Total images compressed: {compressed_count}")
+
+    # Simpan dengan kompresi stream
+    output_stream = io.BytesIO()
+    pdf.save(
+        output_stream,
+        compress_streams=True,
+        object_stream_mode=pikepdf.ObjectStreamMode.generate
+    )
+    output_stream.seek(0)
+    pdf.close()
+    return output_stream
+
+
 @app.route("/", methods=["GET"])
 def index():
     return render_template("index.html")
@@ -348,16 +491,34 @@ def upload():
         if operation_mode == "remove_password":
             output_stream = remove_password_from_file(pdf_stream, original_password)
             output_filename = os.path.splitext(pdf_file.filename)[0] + "_unlocked.pdf"
+        elif operation_mode == "compress":
+            output_stream = compress_pdf(pdf_stream, original_password)
+            output_filename = os.path.splitext(pdf_file.filename)[0] + "_compressed.pdf"
+        elif operation_mode == "lock":
+            # Hanya enkripsi PDF dengan password (tanpa watermark)
+            password = request.form.get("password", "").strip()
+            if not password:
+                flash("Password wajib diisi untuk mengunci PDF.")
+                return redirect(url_for("index"))
+            # Baca & decrypt jika perlu
+            reader = PdfReader(pdf_stream)
+            if reader.is_encrypted:
+                if not original_password:
+                    raise Exception("File PDF terkunci. Silakan masukkan password saat ini.")
+                reader.decrypt(original_password)
+            writer = PdfWriter()
+            for page in reader.pages:
+                writer.add_page(page)
+            unlocked_stream = io.BytesIO()
+            writer.write(unlocked_stream)
+            unlocked_stream.seek(0)
+            output_stream = encrypt_pdf_with_aes(unlocked_stream, password)
+            output_filename = os.path.splitext(pdf_file.filename)[0] + "_locked.pdf"
         else:
-            # Step 1: Apply watermark to PDF
+            # Watermark only (tanpa enkripsi)
             output_stream = apply_watermark_to_file(
                 pdf_stream, watermark_path, opacity, position_h, position_v, size_percent, original_password
             )
-
-            # Step 2: Encrypt PDF dengan AES-256 jika password diberikan
-            password = request.form.get("password", "").strip()
-            if password:
-                output_stream = encrypt_pdf_with_aes(output_stream, password)
             output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
 
         # Hapus watermark custom sementara
@@ -401,42 +562,54 @@ def batch_upload():
             os.makedirs(os.path.dirname(watermark_path), exist_ok=True)
             watermark_file.save(watermark_path)
 
-        # Proses semua file dan simpan ke zip
+        # Proses semua file
         # Step 1: Get password untuk enkripsi (jika ada)
         password = request.form.get("password", "").strip()
         
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for pdf_file in pdf_files:
-                if not pdf_file.filename or not pdf_file.filename.lower().endswith(".pdf"):
-                    continue
+        results = []  # List of (filename, stream) tuples
+        for pdf_file in pdf_files:
+            if not pdf_file.filename or not pdf_file.filename.lower().endswith(".pdf"):
+                continue
 
-                try:
-                    pdf_bytes = pdf_file.read()
-                    pdf_stream = io.BytesIO(pdf_bytes)
-                    
-                    operation_mode = request.form.get("operation_mode", "watermark")
-                    original_password = request.form.get("original_password", "").strip()
+            try:
+                pdf_bytes = pdf_file.read()
+                pdf_stream = io.BytesIO(pdf_bytes)
+                
+                operation_mode = request.form.get("operation_mode", "watermark")
+                original_password = request.form.get("original_password", "").strip()
 
-                    if operation_mode == "remove_password":
-                        output_stream = remove_password_from_file(pdf_stream, original_password)
-                        output_filename = os.path.splitext(pdf_file.filename)[0] + "_unlocked.pdf"
-                    else:
-                        # Step 2: Apply watermark to PDF
-                        output_stream = apply_watermark_to_file(
-                            pdf_stream, watermark_path, opacity, position_h, position_v, size_percent, original_password
-                        )
-                        
-                        # Step 3: Encrypt PDF dengan AES-256 jika password diberikan
-                        if password:
-                            output_stream = encrypt_pdf_with_aes(output_stream, password)
-                        
-                        output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
-                    
-                    zip_file.writestr(output_filename, output_stream.read())
-                except Exception as e:
-                    print(f"Error processing {pdf_file.filename}: {e}")
-                    continue
+                if operation_mode == "remove_password":
+                    output_stream = remove_password_from_file(pdf_stream, original_password)
+                    output_filename = os.path.splitext(pdf_file.filename)[0] + "_unlocked.pdf"
+                elif operation_mode == "compress":
+                    output_stream = compress_pdf(pdf_stream, original_password)
+                    output_filename = os.path.splitext(pdf_file.filename)[0] + "_compressed.pdf"
+                elif operation_mode == "lock":
+                    if not password:
+                        continue
+                    reader = PdfReader(pdf_stream)
+                    if reader.is_encrypted:
+                        if original_password:
+                            reader.decrypt(original_password)
+                    writer = PdfWriter()
+                    for page in reader.pages:
+                        writer.add_page(page)
+                    unlocked_stream = io.BytesIO()
+                    writer.write(unlocked_stream)
+                    unlocked_stream.seek(0)
+                    output_stream = encrypt_pdf_with_aes(unlocked_stream, password)
+                    output_filename = os.path.splitext(pdf_file.filename)[0] + "_locked.pdf"
+                else:
+                    # Watermark only (tanpa enkripsi)
+                    output_stream = apply_watermark_to_file(
+                        pdf_stream, watermark_path, opacity, position_h, position_v, size_percent, original_password
+                    )
+                    output_filename = os.path.splitext(pdf_file.filename)[0] + "_watermarked.pdf"
+                
+                results.append((output_filename, output_stream))
+            except Exception as e:
+                print(f"Error processing {pdf_file.filename}: {e}")
+                continue
 
         # Hapus watermark custom sementara
         if watermark_path and os.path.exists(watermark_path):
@@ -445,12 +618,34 @@ def batch_upload():
             except:
                 pass
 
+        if len(results) == 0:
+            flash("Tidak ada file yang berhasil diproses.")
+            return redirect(url_for("index"))
+
+        # Jika hanya 1 file, kirim langsung sebagai PDF
+        if len(results) == 1:
+            filename, stream = results[0]
+            stream.seek(0)
+            return send_file(
+                stream,
+                as_attachment=True,
+                download_name=filename,
+                mimetype="application/pdf",
+            )
+
+        # Jika banyak file, bungkus dalam ZIP
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for filename, stream in results:
+                stream.seek(0)
+                zip_file.writestr(filename, stream.read())
+
         zip_buffer.seek(0)
         return send_file(
             zip_buffer,
             mimetype="application/zip",
             as_attachment=True,
-            download_name="watermarked_pdfs.zip"
+            download_name="processed_pdfs.zip"
         )
     except Exception as e:
         print("Error saat batch processing:", e)
