@@ -1,4 +1,4 @@
-![alt text](https://github.com/Lulyar/pdf-watermark/blob/main/image/Screenshot%202025-12-28%20173014.png?raw=true)
+![alt text](https://github.com/Lulyar/pdf-watermark/blob/main/image/gambar.png?raw=true)
 
 # WatermarkPDFs
 
