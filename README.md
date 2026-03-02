@@ -18,6 +18,7 @@ Aplikasi web berbasis Python dan Flask untuk mengelola file PDF dengan fitur wat
 Aplikasi ini membutuhkan Python dan beberapa pustaka utama. Semua pustaka ada di dalam file persyaratan.
 
 Untuk melakukan instalasi secara otomatis, buka terminal dan jalankan:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -27,11 +28,14 @@ pip install -r requirements.txt
 1. Buka command prompt atau terminal.
 2. Masuk ke lokasi tempat proyek ini berada.
 3. Jalankan berkas utama melalui perintah berikut:
+
 ```bash
 python app.py
 ```
+
 4. Setelah server aktif, buka browser favorit Anda.
 5. Kunjungi alamat lokal ini:
+
 ```text
 http://127.0.0.1:5000
 ```
