@@ -46,4 +46,4 @@ http://127.0.0.1:5000
 - templates/: Memuat file antarmuka utama (index.html).
 - style/: Memuat fail statis gaya CSS maupun kode JavaScript.
 - temp/: Lokasi penyimpanan temporer untuk gambar yang diolah.
-- requirements.txt: Berkas daftar pustaka spesifik Python.
+- requirements.txt: Berkas daftar pustaka spesifik Python. (wajib di instal) 
